@@ -80,7 +80,32 @@ const ENTER_SHIFT_PX = 64;
 const ENTER_SCALE = 1.04;
 const EXIT_MS = 240;
 
+// Panel/overlay transition timing. Injected once at runtime (below) rather than
+// shipped as a CSS file, so consumers need NO `import '.../modal.css'` for the
+// modal to animate — the package is self-contained. `!important` re-asserts the
+// transition over any global "disable all transitions" reset the host app has
+// (an inline style prop can't carry !important, which is why this is a sheet).
+const MODAL_STYLE_ID = 'bbux-ui-modal-styles';
+const MODAL_CSS = `
+.modal-panel{transition-property:transform,opacity!important;transition-duration:220ms!important;transition-timing-function:cubic-bezier(0.32,0.72,0,1)!important;}
+.modal-overlay{transition-property:opacity!important;transition-duration:220ms!important;transition-timing-function:cubic-bezier(0.32,0.72,0,1)!important;}
+`;
+
+// Inject the modal stylesheet into <head> exactly once, the first time a
+// provider mounts. Guarded by id so multiple providers / HMR don't duplicate it.
+function useInjectModalStyles() {
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (document.getElementById(MODAL_STYLE_ID)) return;
+    const el = document.createElement('style');
+    el.id = MODAL_STYLE_ID;
+    el.textContent = MODAL_CSS;
+    document.head.appendChild(el);
+  }, []);
+}
+
 export function ModalProvider({ children }: { children: ReactNode }) {
+  useInjectModalStyles();
   const [stack, setStack] = useState<ModalEntry[]>([]);
   // Ids past their enter transition (a fresh panel renders once in the enter
   // pose, then is promoted on the next frame so the transition plays).

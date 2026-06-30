@@ -3,8 +3,7 @@
   "version": "0.0.0",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./modal.css": "./src/modal.css"
+    ".": "./src/index.ts"
   },
   "peerDependencies": {
     "lucide-react": "^0.544.0",
