@@ -74,7 +74,7 @@ const OPACITY_STEP = 0.25;
 
 // Enter/exit pose: a panel animates between this (slightly larger, pushed in
 // from the right, transparent) and its resting transform. Same pose both ways,
-// so closing reverses the open. EXIT_MS must exceed the .modal-panel transition
+// so closing reverses the open. EXIT_MS must exceed the .bbux__modal-panel transition
 // duration (220ms) so the panel is removed only after it has slid out.
 const ENTER_SHIFT_PX = 64;
 const ENTER_SCALE = 1.04;
@@ -87,8 +87,8 @@ const EXIT_MS = 240;
 // (an inline style prop can't carry !important, which is why this is a sheet).
 const MODAL_STYLE_ID = 'bbux-ui-modal-styles';
 const MODAL_CSS = `
-.modal-panel{transition-property:transform,opacity!important;transition-duration:220ms!important;transition-timing-function:cubic-bezier(0.32,0.72,0,1)!important;}
-.modal-overlay{transition-property:opacity!important;transition-duration:220ms!important;transition-timing-function:cubic-bezier(0.32,0.72,0,1)!important;}
+.bbux__modal-panel{transition-property:transform,opacity!important;transition-duration:220ms!important;transition-timing-function:cubic-bezier(0.32,0.72,0,1)!important;}
+.bbux__modal-overlay{transition-property:opacity!important;transition-duration:220ms!important;transition-timing-function:cubic-bezier(0.32,0.72,0,1)!important;}
 `;
 
 // Inject the modal stylesheet into <head> exactly once, the first time a
@@ -233,7 +233,7 @@ export function ModalProvider({ children }: { children: ReactNode }) {
               type="button"
               aria-hidden
               tabIndex={-1}
-              className="modal-overlay absolute inset-0 cursor-default bg-black/30 backdrop-blur-sm"
+              className="bbux__modal-overlay absolute inset-0 cursor-default bg-black/30 backdrop-blur-sm"
               style={{ opacity: live.length > 0 ? 1 : 0 }}
               onClick={() => {
                 if (overlayTop && overlayTop.opts.dismissable !== false) closeModal(overlayTop.id);
@@ -255,7 +255,7 @@ export function ModalProvider({ children }: { children: ReactNode }) {
                   aria-hidden={!active}
                   data-depth={depth}
                   className={cn(
-                    'modal-panel fixed top-4 right-4 bottom-4 flex max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border bg-background shadow-xl',
+                    'bbux__modal-panel fixed top-4 right-4 bottom-4 flex max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border bg-background shadow-xl',
                     hidden && 'hidden',
                     !active && 'pointer-events-none select-none',
                     SIZE_CLASS[m.opts.size ?? 'md'],
