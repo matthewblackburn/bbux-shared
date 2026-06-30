@@ -1,0 +1,11 @@
+{
+  "name": "@bbux/hooks",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "peerDependencies": {
+    "react": "^19.2.4"
+  }
+}

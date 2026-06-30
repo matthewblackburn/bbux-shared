@@ -1,0 +1,16 @@
+/* Whitelist: stacked modal panels animate their transform/opacity as the stack
+ * reshuffles — opening a new panel pushes the ones behind it back and to the
+ * left. Re-asserts transition-* with !important to beat the global disable. */
+.modal-panel {
+  transition-property: transform, opacity !important;
+  transition-duration: 220ms !important;
+  transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1) !important;
+}
+
+/* The single modal overlay fades with the stack (in on open, out once the last
+ * panel begins closing) rather than popping. */
+.modal-overlay {
+  transition-property: opacity !important;
+  transition-duration: 220ms !important;
+  transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1) !important;
+}
