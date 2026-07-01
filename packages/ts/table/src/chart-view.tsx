@@ -1,5 +1,5 @@
 import type { FilterField } from '@bbux/types';
-import { CalendarRange, Loader2 } from 'lucide-react';
+import { CalendarRange, Loader2, type LucideIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, LabelList, XAxis, YAxis } from 'recharts';
 import {
@@ -8,6 +8,8 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from './chart';
+import { cn } from './cn';
+import { Input } from './input';
 import {
   Select,
   SelectContent,
@@ -18,7 +20,9 @@ import {
 import type { TableColumn } from './types';
 
 // Value-distribution chart BODY — the superset of tcms's in-memory
-// bucket/distinct chart and bbux's server-count enum-slice chart.
+// bucket/distinct chart and bbux's server-count enum-slice chart
+// (apps/web/src/components/entity-list/ChartPanel.tsx).
+//
 // Designed to render inside @bbux/ui's ModalPanel — the consumer opens
 // it via:
 //
@@ -42,19 +46,18 @@ import type { TableColumn } from './types';
 //     working unchanged).
 //
 //   mode: 'count' (bbux) — { filterFields, count, baseWhere?, dateFields?, … }
-//     Charts an ENUM-slice distribution by running the injected
-//     `count(where) => Promise<number>` callback once per enum value of
-//     the chosen slice, with the table's current filters + an optional
-//     date range merged in. Data-source-agnostic: the caller owns the
-//     query. High-cardinality (non-enum) fields aren't sliceable.
+//     bbux's ChartPanel behaviour, faithfully: charts an ENUM-slice
+//     distribution by running the injected `count(where) => Promise<number>`
+//     once per enum value of the chosen slice, with the table's current
+//     filters + an optional date range merged in. The bar colour comes from
+//     the slice's icon colour (colorVarFromTextClass) and the breakdown
+//     header shows the slice icon — matching the app original.
+//     Data-source-agnostic: the caller owns the query. High-cardinality
+//     (non-enum) fields aren't sliceable.
 
 const MAX_TEXT_BARS = 12;
 const NUMERIC_BUCKETS = 10;
 const NO_VALUE_LABEL = '—';
-
-const chartConfig = {
-  count: { label: 'Count', color: 'var(--primary)' },
-} satisfies ChartConfig;
 
 /** CLIENT mode — bucket/distinct over an in-memory dataset (tcms). */
 export interface ChartViewClientProps {
@@ -123,7 +126,7 @@ function ClientChartView({ columns, rows }: ChartViewClientProps) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4" data-testid="chart-view">
-      <p className="mb-4 text-muted-foreground text-sm">
+      <p className="mb-4 text-sm text-text-muted">
         Counts across the {new Intl.NumberFormat('en-AU').format(rows.length)} rows.
       </p>
 
@@ -144,11 +147,11 @@ function ClientChartView({ columns, rows }: ChartViewClientProps) {
 
       {hasData ? (
         <>
-          <Bars data={data} />
+          <Bars data={data} color="var(--primary)" />
           <Breakdown label={column?.label ?? ''} data={data} />
         </>
       ) : (
-        <div className="rounded-md border border-border border-dashed px-4 py-12 text-center text-muted-foreground text-sm">
+        <div className="rounded-md border border-dashed border-border px-4 py-12 text-center text-sm text-text-muted">
           No data to chart for this column.
         </div>
       )}
@@ -161,6 +164,8 @@ function ClientChartView({ columns, rows }: ChartViewClientProps) {
 interface SliceOption {
   key: string;
   label: string;
+  icon: LucideIcon;
+  iconClassName: string;
   values: ReadonlyArray<{ value: string; label: string }>;
 }
 
@@ -172,6 +177,8 @@ function sliceOptionFor(f: FilterField): SliceOption | null {
   return {
     key: f.key,
     label: f.label,
+    icon: f.icon,
+    iconClassName: f.iconClassName,
     values: f.values.map((v) => ({ value: v.value, label: v.label })),
   };
 }
@@ -260,13 +267,14 @@ function CountChartView({
           value={sliceKey ?? ''}
           onChange={(v) => setSliceKey(v || null)}
           options={sliceOptions.map((s) => ({ value: s.key, label: s.label }))}
+          disabled={sliceOptions.length === 0}
           testid="chart-view-column"
         />
       </div>
 
       {dateFields.length > 0 ? (
         <div className="mb-4 flex flex-col gap-2 rounded-md border border-border p-3">
-          <div className="flex items-center gap-1.5 font-medium text-muted-foreground text-xs">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-text-muted">
             <CalendarRange className="size-3.5" /> Date range
           </div>
           <DropdownField
@@ -281,21 +289,19 @@ function CountChartView({
           />
           {dateField ? (
             <div className="grid grid-cols-2 gap-2">
-              <input
+              <Input
                 type="date"
                 value={from}
                 max={to || undefined}
                 data-testid="chart-view-date-from"
                 onChange={(e) => setFrom(e.target.value)}
-                className="h-8 rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring"
               />
-              <input
+              <Input
                 type="date"
                 value={to}
                 min={from || undefined}
                 data-testid="chart-view-date-to"
                 onChange={(e) => setTo(e.target.value)}
-                className="h-8 rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring"
               />
             </div>
           ) : null}
@@ -313,7 +319,7 @@ function CountChartView({
         />
       ) : (
         <div
-          className="rounded-md border border-border border-dashed px-4 py-12 text-center text-muted-foreground text-sm"
+          className="rounded-md border border-dashed border-border px-4 py-12 text-center text-sm text-text-muted"
           data-testid="chart-view-empty"
         >
           Pick a slice to chart this view.
@@ -352,7 +358,7 @@ function SliceChart({
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground text-sm">
+      <div className="flex items-center justify-center gap-2 py-12 text-sm text-text-muted">
         <Loader2 className="size-3.5 animate-spin" /> Loading…
       </div>
     );
@@ -360,7 +366,7 @@ function SliceChart({
   if (error) {
     return (
       <div
-        className="rounded-md border border-border border-dashed px-4 py-12 text-center text-muted-foreground text-sm"
+        className="rounded-md border border-dashed border-border px-4 py-12 text-center text-sm text-text-muted"
         data-testid="chart-view-empty"
       >
         Failed to load chart data.
@@ -371,7 +377,7 @@ function SliceChart({
   if (values.every((v) => v.count === 0)) {
     return (
       <div
-        className="rounded-md border border-border border-dashed px-4 py-12 text-center text-muted-foreground text-sm"
+        className="rounded-md border border-dashed border-border px-4 py-12 text-center text-sm text-text-muted"
         data-testid="chart-view-empty"
       >
         No data for this slice.
@@ -381,8 +387,8 @@ function SliceChart({
 
   return (
     <>
-      <Bars data={values} />
-      <Breakdown label={slice.label} data={values} />
+      <Bars data={values} color={colorVarFromTextClass(slice.iconClassName)} />
+      <Breakdown label={slice.label} data={values} icon={slice.icon} iconClassName={slice.iconClassName} />
     </>
   );
 }
@@ -391,9 +397,12 @@ function SliceChart({
 
 // recharts bar chart: ChartContainer (aspect-[4/3]) → BarChart with a
 // faint grid, X/Y axes, a cursor-less tooltip, and a rounded Bar
-// carrying a count LabelList. The bar fill reads `--color-count`
-// (--primary) injected by ChartContainer.
-function Bars({ data }: { data: Datum[] }) {
+// carrying a count LabelList. `color` is injected as `--color-count` by
+// ChartContainer and read by the Bar's fill — count mode passes the
+// slice's icon colour (so bars match the filter icon), client mode
+// passes --primary.
+function Bars({ data, color }: { data: Datum[]; color: string }) {
+  const chartConfig = { count: { label: 'Count', color } } satisfies ChartConfig;
   const dense = data.length > 6;
   return (
     <div className="mb-4">
@@ -419,12 +428,7 @@ function Bars({ data }: { data: Datum[] }) {
           />
           <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel={false} />} />
           <Bar dataKey="count" radius={[4, 4, 0, 0]} fill="var(--color-count)">
-            <LabelList
-              dataKey="count"
-              position="top"
-              className="fill-muted-foreground"
-              fontSize={10}
-            />
+            <LabelList dataKey="count" position="top" className="fill-text-muted" fontSize={10} />
           </Bar>
         </BarChart>
       </ChartContainer>
@@ -432,24 +436,41 @@ function Bars({ data }: { data: Datum[] }) {
   );
 }
 
-function Breakdown({ label, data }: { label: string; data: Datum[] }) {
+function Breakdown({
+  label,
+  data,
+  icon: Icon,
+  iconClassName,
+}: {
+  label: string;
+  data: Datum[];
+  icon?: LucideIcon;
+  iconClassName?: string;
+}) {
   return (
     <div className="overflow-hidden rounded-md border border-border" data-testid="chart-view-breakdown">
-      <div className="grid grid-cols-[1fr_auto] items-center border-border border-b px-3 py-2 font-medium text-muted-foreground text-xs">
-        <div className="truncate">{label}</div>
+      <div className="grid grid-cols-[1fr_auto] items-center border-b border-border px-3 py-2 text-xs font-medium text-text-muted">
+        {Icon ? (
+          <div className="inline-flex items-center gap-1.5">
+            <Icon className={cn('size-3.5', iconClassName)} />
+            {label}
+          </div>
+        ) : (
+          <div className="truncate">{label}</div>
+        )}
         <div className="tabular-nums">Count</div>
       </div>
       <div className="max-h-56 overflow-y-auto">
         {data.map((d) => (
           <div
             key={d.value ?? d.label}
-            className="grid grid-cols-[1fr_auto] items-center border-border border-b px-3 py-1.5 text-sm last:border-0"
+            className="grid grid-cols-[1fr_auto] items-center border-b border-border px-3 py-1.5 text-sm last:border-0"
             data-testid="chart-view-bar"
             data-label={d.label}
             data-count={d.count}
           >
-            <div className="truncate text-foreground">{d.label}</div>
-            <div className="text-foreground tabular-nums">{d.count}</div>
+            <div className="truncate text-text">{d.label}</div>
+            <div className="tabular-nums text-text">{d.count}</div>
           </div>
         ))}
       </div>
@@ -464,21 +485,23 @@ function DropdownField({
   value,
   onChange,
   options,
+  disabled,
   testid,
 }: {
   label: string;
   value: string;
   onChange?: (next: string) => void;
   options: ReadonlyArray<{ value: string; label: string }>;
+  disabled?: boolean;
   testid?: string;
 }) {
   return (
     <div className="flex flex-col gap-1">
-      {label ? <span className="text-muted-foreground text-xs">{label}</span> : null}
+      {label ? <span className="text-xs text-text-muted">{label}</span> : null}
       <Select
         value={value || '__none__'}
         onValueChange={(v) => onChange?.(v === '__none__' ? '' : v)}
-        disabled={!onChange || options.length <= 1}
+        disabled={disabled || !onChange || options.length <= 1}
       >
         <SelectTrigger className="h-8 w-full" data-testid={testid}>
           <SelectValue placeholder="—" />
@@ -561,4 +584,34 @@ function parseNumeric(raw: unknown): number {
 
 function fmtMoney(n: number): string {
   return `$${new Intl.NumberFormat('en-AU', { maximumFractionDigits: 0 }).format(Math.round(n))}`;
+}
+
+// Map a filter text-color utility class ("text-amber") to the matching CSS
+// variable recharts' fill can consume, so the count-mode bars match the
+// filter icon colour. Falls back to --primary for any class we don't
+// declare. Copied from bbux's ChartPanel.
+function colorVarFromTextClass(textClass: string): string {
+  const token = textClass.startsWith('text-') ? textClass.slice('text-'.length) : textClass;
+  const map: Record<string, string> = {
+    'text-muted': 'var(--text-muted)',
+    primary: 'var(--primary)',
+    info: 'var(--info)',
+    success: 'var(--success)',
+    warning: 'var(--warning)',
+    danger: 'var(--danger)',
+    purple: 'var(--purple)',
+    pink: 'var(--pink)',
+    cyan: 'var(--cyan)',
+    teal: 'var(--teal)',
+    indigo: 'var(--indigo)',
+    lime: 'var(--lime)',
+    rose: 'var(--rose)',
+    fuchsia: 'var(--fuchsia)',
+    sky: 'var(--sky)',
+    emerald: 'var(--emerald)',
+    violet: 'var(--violet)',
+    orange: 'var(--orange)',
+    amber: 'var(--amber)',
+  };
+  return map[token] ?? 'var(--primary)';
 }
