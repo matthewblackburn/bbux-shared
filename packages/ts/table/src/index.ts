@@ -5,6 +5,7 @@ export {
   type FilterMenuItemsProps,
   type LoadOptions,
 } from './filter-popover';
+export { FilterChips, type FilterChipsProps } from './filter-chips';
 export {
   DisplayOptions,
   type DisplayOptionsProps,
