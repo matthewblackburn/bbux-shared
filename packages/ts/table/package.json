@@ -5,6 +5,9 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "dependencies": {
+    "@bbux/types": "github:matthewblackburn/bbux-shared#path:packages/ts/types"
+  },
   "peerDependencies": {
     "@bbux/ui": "*",
     "lucide-react": "^0.544.0",

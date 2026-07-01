@@ -18,7 +18,8 @@ import type { TableColumn, TableSort } from './types';
 const NO_GROUPING = '__none__';
 
 export interface DisplayOptionsProps {
-  /** All columns the table can show / group / order by. */
+  /** All columns the table can show / group / order by. Also the
+   *  visibility-pill set unless `groupableColumns` narrows grouping. */
   columns: TableColumn[];
   /** Currently hidden column ids. */
   hidden: readonly string[];
@@ -34,6 +35,26 @@ export interface DisplayOptionsProps {
   onToggleOrderDirection: () => void;
   /** Reset hidden cols + grouping + ordering to defaults. */
   onReset: () => void;
+  /**
+   * Optional: columns eligible for Grouping / Sub-grouping. Defaults to
+   * `columns`. bbux passes only enum-ish columns here (grouping a
+   * free-text column is meaningless) while still showing every column
+   * as a visibility pill. tcms omits it → every column is groupable, as
+   * before.
+   */
+  groupableColumns?: TableColumn[];
+  /**
+   * Optional: columns eligible for Ordering. Defaults to `columns`.
+   * Same rationale as `groupableColumns` — a consumer can restrict the
+   * sort dropdown without changing the visibility pills.
+   */
+  orderableColumns?: TableColumn[];
+  /**
+   * Optional: when false, the Reset button renders muted/disabled to
+   * signal the view is already at defaults (bbux's dirty-state). tcms
+   * omits it → Reset is always enabled, as before.
+   */
+  isDirty?: boolean;
 }
 
 export function DisplayOptions({
@@ -48,7 +69,12 @@ export function DisplayOptions({
   onOrderByChange,
   onToggleOrderDirection,
   onReset,
+  groupableColumns,
+  orderableColumns,
+  isDirty,
 }: DisplayOptionsProps) {
+  const groupCols = groupableColumns ?? columns;
+  const orderCols = orderableColumns ?? columns;
   const hiddenSet = new Set(hidden);
   function toggle(colId: string) {
     const next = hiddenSet.has(colId)
@@ -63,7 +89,7 @@ export function DisplayOptions({
         <SettingRow label="Grouping">
           <GroupSelect
             value={groupBy}
-            columns={columns}
+            columns={groupCols}
             onChange={onGroupByChange}
             placeholder="No grouping"
             noneLabel="No grouping"
@@ -74,7 +100,7 @@ export function DisplayOptions({
           <SettingRow label="Sub-grouping">
             <GroupSelect
               value={subGroupBy}
-              columns={columns.filter((c) => c.id !== groupBy)}
+              columns={groupCols.filter((c) => c.id !== groupBy)}
               onChange={onSubGroupByChange}
               placeholder="No grouping"
               noneLabel="No grouping"
@@ -96,7 +122,7 @@ export function DisplayOptions({
             </button>
             <GroupSelect
               value={sort?.column ?? null}
-              columns={columns}
+              columns={orderCols}
               onChange={onOrderByChange}
               placeholder="Default"
               noneLabel="Default"
@@ -143,7 +169,13 @@ export function DisplayOptions({
         <button
           type="button"
           onClick={onReset}
-          className="inline-flex h-8 items-center justify-center rounded-md px-3 text-sm text-foreground transition-colors hover:bg-muted"
+          disabled={isDirty === false}
+          className={cn(
+            'inline-flex h-8 items-center justify-center rounded-md px-3 text-sm transition-colors',
+            isDirty === false
+              ? 'cursor-default text-muted-foreground'
+              : 'text-foreground hover:bg-muted',
+          )}
         >
           Reset
         </button>

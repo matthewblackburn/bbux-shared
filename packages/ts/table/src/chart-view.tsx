@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react';
+import type { FilterField } from '@bbux/types';
+import { CalendarRange, Loader2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, LabelList, XAxis, YAxis } from 'recharts';
 import {
   type ChartConfig,
@@ -15,25 +17,36 @@ import {
 } from './select';
 import type { TableColumn } from './types';
 
-// Value-distribution chart BODY. Designed to render inside @bbux/ui's
-// ModalPanel — the consumer opens it via:
+// Value-distribution chart BODY — the superset of tcms's in-memory
+// bucket/distinct chart and bbux's server-count enum-slice chart.
+// Designed to render inside @bbux/ui's ModalPanel — the consumer opens
+// it via:
 //
 //   const { openModal } = useModals();
 //   openModal(({ close }) => (
 //     <ModalPanel title="Chart" onClose={close} bodyClassName="flex min-h-0 flex-col p-0">
-//       <ChartView columns={columns} rows={rows} />
+//       <ChartView columns={columns} rows={rows} />   // client mode
 //     </ModalPanel>
 //   ));
 //
 // ChartView does NOT open the modal itself and carries no Sheet/Dialog
-// wrapper. It owns only its own padding (p-4) so it sits correctly in a
-// p-0 modal body, plus a Measure / Slice control row, a recharts
-// <BarChart>, and a Breakdown table.
+// wrapper. It owns only its own padding (p-4).
 //
-// The chart runs over the CURRENT dataset passed in (`rows`). Numeric
-// columns (sortType === 'numeric') are bucketed; text columns are
-// counted by distinct value. The data is held entirely in memory — no
-// server round-trips.
+// Two modes, discriminated on `mode`:
+//
+//   mode: 'client' (tcms) — { columns, rows }
+//     Charts the CURRENT in-memory dataset. Numeric columns
+//     (sortType === 'numeric') are bucketed; text columns are counted
+//     by distinct value. No server round-trips. This is the DEFAULT
+//     when `mode` is omitted (so `<ChartView columns rows />` keeps
+//     working unchanged).
+//
+//   mode: 'count' (bbux) — { filterFields, count, baseWhere?, dateFields?, … }
+//     Charts an ENUM-slice distribution by running the injected
+//     `count(where) => Promise<number>` callback once per enum value of
+//     the chosen slice, with the table's current filters + an optional
+//     date range merged in. Data-source-agnostic: the caller owns the
+//     query. High-cardinality (non-enum) fields aren't sliceable.
 
 const MAX_TEXT_BARS = 12;
 const NUMERIC_BUCKETS = 10;
@@ -43,19 +56,58 @@ const chartConfig = {
   count: { label: 'Count', color: 'var(--primary)' },
 } satisfies ChartConfig;
 
-export interface ChartViewProps {
+/** CLIENT mode — bucket/distinct over an in-memory dataset (tcms). */
+export interface ChartViewClientProps {
+  mode?: 'client';
   /** Columns the user can chart (typically the visible/known columns). */
   columns: TableColumn[];
   /** The current dataset (post per-column filters + sort). */
   rows: Record<string, string>[];
 }
 
+/** A datetime dimension the count-mode date-range control can filter by. */
+export interface ChartDateField {
+  /** Field key used as the `where` key for the date range. */
+  key: string;
+  label: string;
+}
+
+/** COUNT mode — enum-slice distribution via a count callback (bbux). */
+export interface ChartViewCountProps {
+  mode: 'count';
+  /** Filter fields; the static (enum) ones become sliceable dimensions. */
+  filterFields: ReadonlyArray<FilterField>;
+  /** Runs a count for an arbitrary `where` — provided by the consumer,
+   *  which owns the data client (GraphQL, REST, …). */
+  count: (where: Record<string, unknown>) => Promise<number>;
+  /** The table's current filters, merged into every count `where`. */
+  baseWhere?: Record<string, unknown>;
+  /** Optional datetime dimensions for the date-range control. Supply
+   *  these directly — the package does not depend on any list schema. */
+  dateFields?: ReadonlyArray<ChartDateField>;
+  /** Part of the query cache key so counts refetch on scope change. */
+  scopeKey?: string;
+  /** Async count runner. Callers using React Query can pass a memoised
+   *  wrapper; the default runs the counts with a plain useEffect. */
+  runCounts?: RunCounts;
+}
+
+export type ChartViewProps = ChartViewClientProps | ChartViewCountProps;
+
 interface Datum {
   label: string;
   count: number;
+  value?: string;
 }
 
-export function ChartView({ columns, rows }: ChartViewProps) {
+export function ChartView(props: ChartViewProps) {
+  if (props.mode === 'count') return <CountChartView {...props} />;
+  return <ClientChartView {...props} />;
+}
+
+// ── CLIENT mode ────────────────────────────────────────────────────
+
+function ClientChartView({ columns, rows }: ChartViewClientProps) {
   const [columnId, setColumnId] = useState<string | null>(() => columns[0]?.id ?? null);
 
   const column = useMemo(() => columns.find((c) => c.id === columnId) ?? null, [columns, columnId]);
@@ -103,6 +155,239 @@ export function ChartView({ columns, rows }: ChartViewProps) {
     </div>
   );
 }
+
+// ── COUNT mode ─────────────────────────────────────────────────────
+
+interface SliceOption {
+  key: string;
+  label: string;
+  values: ReadonlyArray<{ value: string; label: string }>;
+}
+
+// Enum filter fields (kind === 'static' with inline values) are the
+// sliceable dimensions — their finite value set is exactly what we count
+// over.
+function sliceOptionFor(f: FilterField): SliceOption | null {
+  if (f.kind !== 'static' || !f.values?.length) return null;
+  return {
+    key: f.key,
+    label: f.label,
+    values: f.values.map((v) => ({ value: v.value, label: v.label })),
+  };
+}
+
+/** Injected async runner so consumers can back the counts with their own
+ *  cache (e.g. React Query). Given the cache key + a thunk that resolves
+ *  the datums, it returns the current async state. Defaults to a plain
+ *  useEffect-based runner (no external cache). */
+export type RunCounts = (
+  key: string,
+  run: () => Promise<Datum[]>,
+) => { data: Datum[] | undefined; isLoading: boolean; error: boolean };
+
+const defaultRunCounts: RunCounts = (key, run) => {
+  const [data, setData] = useState<Datum[] | undefined>(undefined);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(false);
+  // key is intentionally the only dep — `run` closes over the same
+  // inputs the key encodes, so keying on it avoids stale-closure refetch
+  // storms while still refetching when the slice/filters/date change.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see above.
+  useEffect(() => {
+    let cancelled = false;
+    setIsLoading(true);
+    setError(false);
+    run()
+      .then((d) => {
+        if (!cancelled) setData(d);
+      })
+      .catch(() => {
+        if (!cancelled) setError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [key]);
+  return { data, isLoading, error };
+};
+
+function CountChartView({
+  filterFields,
+  count,
+  baseWhere,
+  dateFields = [],
+  scopeKey,
+  runCounts,
+}: ChartViewCountProps) {
+  const sliceOptions = useMemo(
+    () => filterFields.map(sliceOptionFor).filter((o): o is SliceOption => o !== null),
+    [filterFields],
+  );
+
+  const [sliceKey, setSliceKey] = useState<string | null>(() => sliceOptions[0]?.key ?? null);
+  const [dateField, setDateField] = useState<string>('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+
+  // Default the slice once options are known.
+  useEffect(() => {
+    if (sliceKey === null && sliceOptions.length > 0) setSliceKey(sliceOptions[0].key);
+  }, [sliceKey, sliceOptions]);
+
+  const slice = sliceOptions.find((s) => s.key === sliceKey) ?? null;
+
+  const dateWhere = useMemo<Record<string, unknown>>(() => {
+    if (!dateField || (!from && !to)) return {};
+    const range: Record<string, string> = {};
+    if (from) range.gte = new Date(`${from}T00:00:00`).toISOString();
+    if (to) range.lte = new Date(`${to}T23:59:59`).toISOString();
+    return { [dateField]: range };
+  }, [dateField, from, to]);
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4" data-testid="chart-view">
+      <div className="mb-4 grid grid-cols-2 gap-2">
+        <DropdownField
+          label="Measure"
+          value="count"
+          options={[{ value: 'count', label: 'Count' }]}
+        />
+        <DropdownField
+          label="Slice"
+          value={sliceKey ?? ''}
+          onChange={(v) => setSliceKey(v || null)}
+          options={sliceOptions.map((s) => ({ value: s.key, label: s.label }))}
+          testid="chart-view-column"
+        />
+      </div>
+
+      {dateFields.length > 0 ? (
+        <div className="mb-4 flex flex-col gap-2 rounded-md border border-border p-3">
+          <div className="flex items-center gap-1.5 font-medium text-muted-foreground text-xs">
+            <CalendarRange className="size-3.5" /> Date range
+          </div>
+          <DropdownField
+            label=""
+            value={dateField}
+            onChange={setDateField}
+            options={[
+              { value: '', label: 'No date filter' },
+              ...dateFields.map((d) => ({ value: d.key, label: d.label })),
+            ]}
+            testid="chart-view-date-field"
+          />
+          {dateField ? (
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="date"
+                value={from}
+                max={to || undefined}
+                data-testid="chart-view-date-from"
+                onChange={(e) => setFrom(e.target.value)}
+                className="h-8 rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring"
+              />
+              <input
+                type="date"
+                value={to}
+                min={from || undefined}
+                data-testid="chart-view-date-to"
+                onChange={(e) => setTo(e.target.value)}
+                className="h-8 rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring"
+              />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {slice ? (
+        <SliceChart
+          slice={slice}
+          count={count}
+          baseWhere={baseWhere ?? {}}
+          dateWhere={dateWhere}
+          scopeKey={scopeKey}
+          runCounts={runCounts ?? defaultRunCounts}
+        />
+      ) : (
+        <div
+          className="rounded-md border border-border border-dashed px-4 py-12 text-center text-muted-foreground text-sm"
+          data-testid="chart-view-empty"
+        >
+          Pick a slice to chart this view.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SliceChart({
+  slice,
+  count,
+  baseWhere,
+  dateWhere,
+  scopeKey,
+  runCounts,
+}: {
+  slice: SliceOption;
+  count: (where: Record<string, unknown>) => Promise<number>;
+  baseWhere: Record<string, unknown>;
+  dateWhere: Record<string, unknown>;
+  scopeKey?: string;
+  runCounts: RunCounts;
+}) {
+  const key = JSON.stringify({ scope: scopeKey, s: slice.key, b: baseWhere, d: dateWhere });
+  const { data, isLoading, error } = runCounts(key, async () => {
+    const rows = await Promise.all(
+      slice.values.map(async (v) => ({
+        value: v.value,
+        label: v.label,
+        count: await count({ ...baseWhere, ...dateWhere, [slice.key]: { eq: v.value } }),
+      })),
+    );
+    return rows.sort((a, b) => b.count - a.count);
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground text-sm">
+        <Loader2 className="size-3.5 animate-spin" /> Loading…
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div
+        className="rounded-md border border-border border-dashed px-4 py-12 text-center text-muted-foreground text-sm"
+        data-testid="chart-view-empty"
+      >
+        Failed to load chart data.
+      </div>
+    );
+  }
+  const values = data ?? [];
+  if (values.every((v) => v.count === 0)) {
+    return (
+      <div
+        className="rounded-md border border-border border-dashed px-4 py-12 text-center text-muted-foreground text-sm"
+        data-testid="chart-view-empty"
+      >
+        No data for this slice.
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <Bars data={values} />
+      <Breakdown label={slice.label} data={values} />
+    </>
+  );
+}
+
+// ── Shared chart pieces ────────────────────────────────────────────
 
 // recharts bar chart: ChartContainer (aspect-[4/3]) → BarChart with a
 // faint grid, X/Y axes, a cursor-less tooltip, and a rounded Bar
@@ -157,7 +442,7 @@ function Breakdown({ label, data }: { label: string; data: Datum[] }) {
       <div className="max-h-56 overflow-y-auto">
         {data.map((d) => (
           <div
-            key={d.label}
+            key={d.value ?? d.label}
             className="grid grid-cols-[1fr_auto] items-center border-border border-b px-3 py-1.5 text-sm last:border-0"
             data-testid="chart-view-bar"
             data-label={d.label}
