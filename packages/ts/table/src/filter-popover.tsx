@@ -1,10 +1,5 @@
 import type { ActiveFilters, FilterField, FilterValue } from '@bbux/types';
-import {
-  clearFilterKey,
-  getTextFilter,
-  setTextFilter,
-  toggleFilterValue,
-} from '@bbux/types';
+import { getTextFilter, setTextFilter, toggleFilterValue } from '@bbux/types';
 import { Check, ChevronRight, Loader2, Search, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { cn } from './cn';
