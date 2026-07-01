@@ -9,6 +9,7 @@ export {
   BreadcrumbSeparator,
 } from './breadcrumb';
 export { Kbd, KbdGroup } from './kbd';
+export { ListHeader } from './list-header';
 export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './tooltip';
 export {
   type ModalApi,
