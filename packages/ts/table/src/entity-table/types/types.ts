@@ -30,6 +30,21 @@ export interface RowActionsConfig<T> {
   /** The list's React Query key (the entity's listField) — invalidated after a
    *  bulk action so the grid (status / tags columns) refreshes. */
   listField?: string;
+  /** Extra per-row menu items beyond the built-ins (Copy ID / Edit / status /
+   *  delete). Rendered in the single-row "⋯" menu. Lets consumers add bespoke
+   *  actions the fixed config can't express — e.g. a cascade-reassign delete,
+   *  or view/edit navigation. Return [] (or set hidden) to omit for a row. */
+  customActions?: (row: T) => ReadonlyArray<CustomRowAction>;
+}
+
+export interface CustomRowAction {
+  label: string;
+  icon?: ReactNode;
+  onSelect: () => void;
+  /** Renders in the danger colour (e.g. Delete). */
+  danger?: boolean;
+  /** When true the item is skipped (e.g. locked/system rows). */
+  hidden?: boolean;
 }
 
 /** Minimal tag API the bulk-actions menu needs; the consumer supplies its own

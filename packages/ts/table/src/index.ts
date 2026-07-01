@@ -15,6 +15,7 @@ export {
 } from './entity-table/EntitySchemaTable';
 export type {
   RowActionsConfig,
+  CustomRowAction,
   TagApi,
   TagOption,
   EntityListToolbarState,

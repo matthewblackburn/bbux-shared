@@ -343,6 +343,30 @@ export function BulkActionsMenu<T>({
                 </CommandGroup>
               ) : null}
 
+              {single && rowActions?.customActions ? (
+                <CommandGroup>
+                  {rowActions
+                    .customActions(single)
+                    .filter((a) => !a.hidden)
+                    .map((a) => (
+                      <CommandItem
+                        key={a.label}
+                        value={a.label}
+                        onSelect={() => {
+                          a.onSelect();
+                          onClose();
+                        }}
+                        className={
+                          a.danger ? 'text-danger data-[selected=true]:text-danger' : undefined
+                        }
+                      >
+                        {a.icon}
+                        {a.label}
+                      </CommandItem>
+                    ))}
+                </CommandGroup>
+              ) : null}
+
               {status ? (
                 <CommandGroup heading="Set status">
                   {status.options.map((opt) => (
