@@ -6,6 +6,29 @@ export {
   type LoadOptions,
 } from './filter-popover';
 export { FilterChips, type FilterChipsProps } from './filter-chips';
+// The shared list/grid table (bbux's EntitySchemaTable, generalized). Generic
+// over the row type; cells come from the built-in registry, a consumer-injected
+// `cellRegistry`, or per-column `cellOverrides` render hooks.
+export {
+  EntitySchemaTable as EntityTable,
+  type EntitySchemaTableProps as EntityTableProps,
+} from './entity-table/EntitySchemaTable';
+export type {
+  RowActionsConfig,
+  TagApi,
+  TagOption,
+  EntityListToolbarState,
+  EntityListOutletContext,
+} from './entity-table/types/types';
+export { CELL_REGISTRY, type CellProps } from './entity-table/cells';
+export {
+  renderCell,
+  getPath,
+  groupingPath,
+  resolveFilterColor,
+  resolveIcon,
+  schemaToFilterFields,
+} from './entity-table/SchemaRender';
 export {
   DisplayOptions,
   type DisplayOptionsProps,
